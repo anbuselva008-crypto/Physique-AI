@@ -9,6 +9,13 @@ import {
   PhotoPose,
 } from '../../types';
 import { progressService } from '../../services';
+import { visionConnector } from '../../integration/visionConnector';
+import { photoManager } from '../../vision/photoManager';
+import { VisionReport, MonthlyPhotoSet } from '../../vision/types';
+import { PoseCaptureCard } from '../vision/PoseCaptureCard';
+import { VisionAnalysisReportCard } from '../vision/VisionAnalysisReportCard';
+import { MonthlyComparisonCard } from '../vision/MonthlyComparisonCard';
+import { MonthlyReviewCard } from '../vision/MonthlyReviewCard';
 import {
   ResponsiveContainer,
   LineChart,
@@ -34,12 +41,21 @@ import {
   Zap,
   Moon,
   Droplets,
+  Sparkles,
+  Layers,
 } from 'lucide-react';
 
-type ProgressTab = 'weight' | 'measurements' | 'prs' | 'photos' | 'stats';
+type ProgressTab = 'vision' | 'weight' | 'measurements' | 'prs' | 'photos' | 'stats';
 
 export const ProgressView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<ProgressTab>('weight');
+  const [activeTab, setActiveTab] = useState<ProgressTab>('vision');
+
+  // Vision Pipeline State
+  const [currentMonth, setCurrentMonth] = useState<string>('2026-08');
+  const [photoSet, setPhotoSet] = useState<MonthlyPhotoSet | undefined>(undefined);
+  const [visionReport, setVisionReport] = useState<VisionReport | null>(null);
+  const [previousReport, setPreviousReport] = useState<VisionReport | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Data State
   const [weights, setWeights] = useState<WeightEntry[]>([]);
@@ -72,7 +88,8 @@ export const ProgressView: React.FC = () => {
 
   useEffect(() => {
     refreshAllData();
-  }, []);
+    loadVisionState(currentMonth);
+  }, [currentMonth]);
 
   const refreshAllData = () => {
     setWeights(progressService.getWeightHistory());
@@ -80,6 +97,36 @@ export const ProgressView: React.FC = () => {
     setPhotos(progressService.getProgressPhotos());
     setPRs(progressService.getPRs());
     setStats(progressService.getProgressStats());
+  };
+
+  const loadVisionState = (month: string) => {
+    const set = photoManager.getPhotoSet(month);
+    setPhotoSet(set);
+  };
+
+  const handleRunVisionAnalysis = async () => {
+    setIsAnalyzing(true);
+    try {
+      const report = await visionConnector.executeFullSessionPipeline(currentMonth);
+      setVisionReport(report);
+
+      // Check if previous month report exists
+      const prevSet = photoManager.getPreviousMonthSet(currentMonth);
+      if (prevSet) {
+        const prevRep = await visionConnector.executeFullSessionPipeline(prevSet.month);
+        setPreviousReport(prevRep);
+      }
+    } catch (err) {
+      console.error('Failed to run vision analysis', err);
+    } finally {
+      setIsAnalyzing(false);
+      refreshAllData();
+    }
+  };
+
+  const handlePhotosUpdated = () => {
+    const set = photoManager.getPhotoSet(currentMonth);
+    setPhotoSet(set);
   };
 
   // 1. Weight handlers
@@ -185,6 +232,18 @@ export const ProgressView: React.FC = () => {
       {/* Navigation Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         <button
+          onClick={() => setActiveTab('vision')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'vision'
+              ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
+              : 'bg-[#141414] border border-[#222222] text-gray-400 hover:text-white'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>Vision AI Studio</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('weight')}
           className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'weight'
@@ -244,6 +303,50 @@ export const ProgressView: React.FC = () => {
           <span>Stats & Streaks</span>
         </button>
       </div>
+
+      {/* TAB 0: VISION AI STUDIO */}
+      {activeTab === 'vision' && (
+        <div className="space-y-6">
+          {/* Month Selector */}
+          <div className="flex items-center justify-between bg-[#111111] border border-[#222222] p-3 rounded-xl">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#10B981]" />
+              <span className="text-xs font-bold text-white">Target Session Month:</span>
+            </div>
+            <select
+              value={currentMonth}
+              onChange={(e) => setCurrentMonth(e.target.value)}
+              className="bg-[#181818] border border-[#262626] rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-[#10B981]"
+            >
+              <option value="2026-08">August 2026</option>
+              <option value="2026-07">July 2026</option>
+              <option value="2026-06">June 2026</option>
+              <option value="2026-05">May 2026</option>
+            </select>
+          </div>
+
+          {/* 1. Photo Capture Box */}
+          <PoseCaptureCard
+            month={currentMonth}
+            photoSet={photoSet}
+            onPhotosUpdated={handlePhotosUpdated}
+            onRunAnalysis={handleRunVisionAnalysis}
+            isAnalyzing={isAnalyzing}
+          />
+
+          {/* 2. Analysis Report Card */}
+          {visionReport && (
+            <>
+              <VisionAnalysisReportCard report={visionReport} />
+              <MonthlyComparisonCard
+                currentReport={visionReport}
+                previousReport={previousReport || undefined}
+              />
+              <MonthlyReviewCard report={visionReport.transformationReport} />
+            </>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: WEIGHT HISTORY */}
       {activeTab === 'weight' && (
