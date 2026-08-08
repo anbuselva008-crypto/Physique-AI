@@ -1,4 +1,4 @@
-export type TabType = 'dashboard' | 'workout' | 'nutrition' | 'progress' | 'profile' | 'knowledge';
+export type TabType = 'dashboard' | 'workout' | 'nutrition' | 'progress' | 'profile' | 'knowledge' | 'ai_coach';
 
 export interface DailySchedule {
   wakeUpTime: string;

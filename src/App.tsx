@@ -10,6 +10,7 @@ import { ProfileView } from './components/views/ProfileView';
 import { ProgressView } from './components/views/ProgressView';
 import { NutritionView } from './components/views/NutritionView';
 import { KnowledgeView } from './components/views/KnowledgeView';
+import { AICoachView } from './components/views/AICoachView';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -67,6 +68,9 @@ export default function App() {
         )}
         {activeTab === 'workout' && (
           <WorkoutEngineView onBackToDashboard={() => setActiveTab('dashboard')} />
+        )}
+        {activeTab === 'ai_coach' && (
+          <AICoachView />
         )}
         {activeTab === 'nutrition' && (
           <NutritionView />

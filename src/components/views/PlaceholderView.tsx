@@ -8,7 +8,7 @@ interface PlaceholderViewProps {
 }
 
 export const PlaceholderView: React.FC<PlaceholderViewProps> = ({ type }) => {
-  const meta = {
+  const metaMap = {
     workout: {
       title: 'Workout Routines',
       subtitle: 'Chest + Triceps scheduled for today',
@@ -33,7 +33,27 @@ export const PlaceholderView: React.FC<PlaceholderViewProps> = ({ type }) => {
       icon: Dumbbell,
       description: 'Dashboard overview',
     },
-  }[type];
+    nutrition: {
+      title: 'Nutrition',
+      subtitle: 'Dietary Tracking',
+      icon: Dumbbell,
+      description: 'Nutrition tracker',
+    },
+    knowledge: {
+      title: 'Knowledge Library',
+      subtitle: 'Evidence-Based Fitness',
+      icon: Dumbbell,
+      description: 'Library database',
+    },
+    ai_coach: {
+      title: 'AI Coach',
+      subtitle: 'Smart Assistant',
+      icon: Dumbbell,
+      description: 'AI Coaching chat',
+    },
+  };
+
+  const meta = metaMap[type] || metaMap.dashboard;
 
   const Icon = meta.icon;
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { TabType } from '../../types';
-import { Home, Zap, Utensils, BookOpen, TrendingUp, User } from 'lucide-react';
+import { Home, Zap, Utensils, BookOpen, TrendingUp, User, Bot } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: TabType;
@@ -16,7 +16,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: 'dashboard', label: 'Home', icon: Home },
   { id: 'workout', label: 'Workout', icon: Zap },
-  { id: 'nutrition', label: 'Nutrition', icon: Utensils },
+  { id: 'ai_coach', label: 'AI Coach', icon: Bot },
+  { id: 'nutrition', label: 'Diet', icon: Utensils },
   { id: 'knowledge', label: 'Library', icon: BookOpen },
   { id: 'progress', label: 'Progress', icon: TrendingUp },
   { id: 'profile', label: 'Profile', icon: User },
