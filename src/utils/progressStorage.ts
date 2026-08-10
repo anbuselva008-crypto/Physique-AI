@@ -105,16 +105,14 @@ const DEFAULT_PRS: ExercisePR[] = [
 
 // --- Weight Storage ---
 export const getWeightHistory = (): WeightEntry[] => {
-  if (typeof window === 'undefined') return DEFAULT_WEIGHTS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(WEIGHT_KEY);
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.error('Error loading weight history', err);
   }
-  // Initialize default
-  localStorage.setItem(WEIGHT_KEY, JSON.stringify(DEFAULT_WEIGHTS));
-  return DEFAULT_WEIGHTS;
+  return [];
 };
 
 export const addWeightEntry = (entry: WeightEntry): WeightEntry[] => {
@@ -132,15 +130,14 @@ export const addWeightEntry = (entry: WeightEntry): WeightEntry[] => {
 
 // --- Body Measurements Storage ---
 export const getMeasurements = (): BodyMeasurements[] => {
-  if (typeof window === 'undefined') return DEFAULT_MEASUREMENTS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(MEASUREMENTS_KEY);
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.error('Error loading measurements', err);
   }
-  localStorage.setItem(MEASUREMENTS_KEY, JSON.stringify(DEFAULT_MEASUREMENTS));
-  return DEFAULT_MEASUREMENTS;
+  return [];
 };
 
 export const addMeasurementEntry = (entry: Omit<BodyMeasurements, 'id'>): BodyMeasurements[] => {
@@ -195,15 +192,14 @@ export const deleteProgressPhoto = (id: string): ProgressPhoto[] => {
 
 // --- Strength PRs Storage ---
 export const getPRs = (): ExercisePR[] => {
-  if (typeof window === 'undefined') return DEFAULT_PRS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(PRS_KEY);
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.error('Error loading PRs', err);
   }
-  localStorage.setItem(PRS_KEY, JSON.stringify(DEFAULT_PRS));
-  return DEFAULT_PRS;
+  return [];
 };
 
 export const addOrUpdatePR = (
@@ -252,16 +248,69 @@ export const getProgressStats = (): ProgressStats => {
   const weights = getWeightHistory();
   const avgWeight = weights.length
     ? +(weights.reduce((sum, w) => sum + w.weightKg, 0) / weights.length).toFixed(1)
-    : 68.0;
+    : 0;
+
+  // Completed workouts count
+  let completedWorkouts = 0;
+  let workoutDays = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const rawComp = localStorage.getItem('physique_ai_completed_workouts');
+      if (rawComp) {
+        const history: any[] = JSON.parse(rawComp);
+        completedWorkouts = history.length;
+        const uniqueDates = new Set(history.map((h) => h.date || getFormattedDate(0)));
+        workoutDays = uniqueDates.size;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Calculate check-in averages if available
+  let avgSleep = 0;
+  let avgEnergy = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const rawCheck = localStorage.getItem('physique_ai_today_checkin');
+      if (rawCheck) {
+        const checkin = JSON.parse(rawCheck);
+        if (checkin.sleepHours) avgSleep = checkin.sleepHours;
+        if (checkin.energyLevel) avgEnergy = checkin.energyLevel;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // Calculate water average if available
+  let avgWater = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const rawWater = localStorage.getItem('physique_ai_water_logs');
+      if (rawWater) {
+        const logs: Record<string, { ml: number }> = JSON.parse(rawWater);
+        const entries = Object.values(logs);
+        if (entries.length > 0) {
+          const totalMl = entries.reduce((s, e) => s + (e.ml || 0), 0);
+          avgWater = +(totalMl / entries.length / 1000).toFixed(1);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  const streak = completedWorkouts > 0 ? Math.min(completedWorkouts, 30) : 0;
 
   return {
-    workoutDays: 18,
-    currentStreak: 5,
-    longestStreak: 12,
-    completedWorkouts: 24,
-    avgSleep: 7.4,
-    avgWater: 3.2,
-    avgEnergy: 7.8,
+    workoutDays,
+    currentStreak: streak,
+    longestStreak: streak,
+    completedWorkouts,
+    avgSleep,
+    avgWater,
+    avgEnergy,
     avgWeight,
   };
 };
@@ -270,20 +319,37 @@ export const getProgressSummary = (): ProgressSummary => {
   const weights = getWeightHistory();
   const prs = getPRs();
 
-  const currentWeight = weights.length ? weights[weights.length - 1].weightKg : 68.0;
+  const currentWeight = weights.length ? weights[weights.length - 1].weightKg : 0;
   const previousWeight = weights.length >= 2 ? weights[weights.length - 2].weightKg : currentWeight;
-  const weeklyChangeKg = +(currentWeight - previousWeight).toFixed(1);
+  const weeklyChangeKg = currentWeight && previousWeight ? +(currentWeight - previousWeight).toFixed(1) : 0;
 
   // Latest PR
   const latestPRRecord = prs.length
     ? prs.reduce((prev, curr) => (new Date(curr.date) > new Date(prev.date) ? curr : prev))
     : undefined;
 
+  let lastWorkoutDate = 'No workouts yet';
+  let workoutStreak = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      const rawComp = localStorage.getItem('physique_ai_completed_workouts');
+      if (rawComp) {
+        const history: any[] = JSON.parse(rawComp);
+        if (history.length > 0) {
+          lastWorkoutDate = 'Today';
+          workoutStreak = history.length;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   return {
     currentWeightKg: currentWeight,
     weeklyChangeKg,
-    workoutStreak: 5,
-    lastWorkoutDate: 'Today',
+    workoutStreak,
+    lastWorkoutDate,
     latestPR: latestPRRecord
       ? {
           exerciseName: latestPRRecord.exerciseName,

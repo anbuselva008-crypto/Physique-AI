@@ -9,6 +9,7 @@ import {
   PhotoPose,
 } from '../../types';
 import { progressService } from '../../services';
+import { stateSynchronizer } from '../../integration/stateSynchronizer';
 import { visionConnector } from '../../integration/visionConnector';
 import { photoManager } from '../../vision/photoManager';
 import { VisionReport, MonthlyPhotoSet } from '../../vision/types';
@@ -16,6 +17,11 @@ import { PoseCaptureCard } from '../vision/PoseCaptureCard';
 import { VisionAnalysisReportCard } from '../vision/VisionAnalysisReportCard';
 import { MonthlyComparisonCard } from '../vision/MonthlyComparisonCard';
 import { MonthlyReviewCard } from '../vision/MonthlyReviewCard';
+import { MonthlyTimelineCard } from '../vision/MonthlyTimelineCard';
+import { ExecutiveSummaryCard } from '../vision/ExecutiveSummaryCard';
+import { AIDecisionPipelineCard } from '../vision/AIDecisionPipelineCard';
+import { EvidenceCard } from '../vision/EvidenceCard';
+import { monthlyReportStorage, StoredMonthlyReport } from '../../vision/monthlyReportStorage';
 import {
   ResponsiveContainer,
   LineChart,
@@ -55,6 +61,7 @@ export const ProgressView: React.FC = () => {
   const [photoSet, setPhotoSet] = useState<MonthlyPhotoSet | undefined>(undefined);
   const [visionReport, setVisionReport] = useState<VisionReport | null>(null);
   const [previousReport, setPreviousReport] = useState<VisionReport | null>(null);
+  const [storedReports, setStoredReports] = useState<StoredMonthlyReport[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Data State
@@ -89,6 +96,11 @@ export const ProgressView: React.FC = () => {
   useEffect(() => {
     refreshAllData();
     loadVisionState(currentMonth);
+    const unsubscribe = stateSynchronizer.subscribe(() => {
+      refreshAllData();
+      loadVisionState(currentMonth);
+    });
+    return () => unsubscribe();
   }, [currentMonth]);
 
   const refreshAllData = () => {
@@ -97,11 +109,17 @@ export const ProgressView: React.FC = () => {
     setPhotos(progressService.getProgressPhotos());
     setPRs(progressService.getPRs());
     setStats(progressService.getProgressStats());
+    setStoredReports(monthlyReportStorage.getAllReports());
   };
 
   const loadVisionState = (month: string) => {
     const set = photoManager.getPhotoSet(month);
     setPhotoSet(set);
+
+    const stored = monthlyReportStorage.getReportByMonth(month);
+    if (stored) {
+      setVisionReport(stored.fullReport);
+    }
   };
 
   const handleRunVisionAnalysis = async () => {
@@ -334,14 +352,44 @@ export const ProgressView: React.FC = () => {
             isAnalyzing={isAnalyzing}
           />
 
-          {/* 2. Analysis Report Card */}
+          {/* 2. Monthly Timeline Overview */}
+          <MonthlyTimelineCard
+            reports={storedReports}
+            selectedMonth={currentMonth}
+            onSelectMonth={(m) => setCurrentMonth(m)}
+          />
+
+          {/* 3. Analysis & Executive Intelligence */}
           {visionReport && (
             <>
+              {/* Executive Summary & Momentum */}
+              <ExecutiveSummaryCard
+                summary={visionReport.bodyAnalysis.executiveSummary}
+                month={currentMonth}
+              />
+
+              {/* WHY DID THE AI CHANGE MY PROGRAM? */}
+              <AIDecisionPipelineCard
+                flows={visionReport.bodyAnalysis.decisionPipelineFlow}
+              />
+
+              {/* Anatomical Evidence Engine (Qualitative Levels & Reasoning) */}
+              <EvidenceCard
+                analyses={visionReport.bodyAnalysis.scientificMuscleAnalyses}
+                confidenceReasons={visionReport.bodyAnalysis.confidenceReasons}
+                notDeterminableFeatures={visionReport.bodyAnalysis.notDeterminableFeatures}
+              />
+
+              {/* Body Composition Metrics & Categorized Breakdown */}
               <VisionAnalysisReportCard report={visionReport} />
+
+              {/* Side-by-Side Pose Comparison */}
               <MonthlyComparisonCard
                 currentReport={visionReport}
                 previousReport={previousReport || undefined}
               />
+
+              {/* Integrated Monthly Transformation Review */}
               <MonthlyReviewCard report={visionReport.transformationReport} />
             </>
           )}
@@ -405,68 +453,78 @@ export const ProgressView: React.FC = () => {
           </Card>
 
           {/* Weight Line Chart */}
-          <Card className="bg-[#111111] border-[#222222]">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-bold text-white">Weight Trend Chart</h2>
-                <p className="text-xs text-gray-400">Total Change: {totalWeightDiff > 0 ? `+${totalWeightDiff}` : totalWeightDiff} kg</p>
-              </div>
-              <span className="text-xs font-extrabold text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-lg border border-[#10B981]/20">
-                Latest: {latestWeight} kg
-              </span>
-            </div>
-
-            <div className="h-64 w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={weights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#222222" />
-                  <XAxis dataKey="date" stroke="#666666" tick={{ fontSize: 11 }} />
-                  <YAxis domain={['auto', 'auto']} stroke="#666666" tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#181818',
-                      borderColor: '#333333',
-                      borderRadius: '12px',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="weightKg"
-                    stroke="#10B981"
-                    strokeWidth={3}
-                    dot={{ fill: '#10B981', r: 5 }}
-                    activeDot={{ r: 7, fill: '#34D399' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-
-          {/* Weight Logs Table */}
-          <Card className="bg-[#111111] border-[#222222]">
-            <h2 className="text-sm font-bold text-white mb-3">Historical Weight Logs</h2>
-            <div className="space-y-2">
-              {weights.slice().reverse().map((entry, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-[#181818] border border-[#262626] text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-4 h-4 text-gray-500" />
-                    <span className="font-medium text-gray-300">{entry.date}</span>
-                    {entry.note && (
-                      <span className="text-gray-500 bg-[#222222] px-2 py-0.5 rounded text-[10px]">
-                        {entry.note}
-                      </span>
-                    )}
+          {weights.length === 0 ? (
+            <Card className="bg-[#111111] border-[#222222] p-8 text-center text-gray-500">
+              <Scale className="w-10 h-10 mx-auto mb-2 opacity-30 text-[#10B981]" />
+              <p className="text-xs font-bold text-gray-300">No weight entries logged yet</p>
+              <p className="text-[11px] text-gray-500 mt-1">Log your first weigh-in above to track weight trends over time.</p>
+            </Card>
+          ) : (
+            <>
+              <Card className="bg-[#111111] border-[#222222]">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-white">Weight Trend Chart</h2>
+                    <p className="text-xs text-gray-400">Total Change: {totalWeightDiff > 0 ? `+${totalWeightDiff}` : totalWeightDiff} kg</p>
                   </div>
-                  <span className="font-extrabold text-white text-sm">{entry.weightKg} kg</span>
+                  <span className="text-xs font-extrabold text-[#10B981] bg-[#10B981]/10 px-2.5 py-1 rounded-lg border border-[#10B981]/20">
+                    Latest: {latestWeight} kg
+                  </span>
                 </div>
-              ))}
-            </div>
-          </Card>
+
+                <div className="h-64 w-full pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={weights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#222222" />
+                      <XAxis dataKey="date" stroke="#666666" tick={{ fontSize: 11 }} />
+                      <YAxis domain={['auto', 'auto']} stroke="#666666" tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#181818',
+                          borderColor: '#333333',
+                          borderRadius: '12px',
+                          color: '#ffffff',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="weightKg"
+                        stroke="#10B981"
+                        strokeWidth={3}
+                        dot={{ fill: '#10B981', r: 5 }}
+                        activeDot={{ r: 7, fill: '#34D399' }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              {/* Weight Logs Table */}
+              <Card className="bg-[#111111] border-[#222222]">
+                <h2 className="text-sm font-bold text-white mb-3">Historical Weight Logs</h2>
+                <div className="space-y-2">
+                  {weights.slice().reverse().map((entry, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 rounded-xl bg-[#181818] border border-[#262626] text-xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Calendar className="w-4 h-4 text-gray-500" />
+                        <span className="font-medium text-gray-300">{entry.date}</span>
+                        {entry.note && (
+                          <span className="text-gray-500 bg-[#222222] px-2 py-0.5 rounded text-[10px]">
+                            {entry.note}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-extrabold text-white text-sm">{entry.weightKg} kg</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
+          )}
         </div>
       )}
 
@@ -558,52 +616,60 @@ export const ProgressView: React.FC = () => {
           {/* Measurements Timeline */}
           <div className="space-y-3">
             <h2 className="text-sm font-bold text-white">Saved Measurement Logs</h2>
-            {measurements.map((record) => (
-              <Card key={record.id} className="bg-[#111111] border-[#222222] p-4">
-                <div className="flex items-center justify-between mb-3 border-b border-[#222222] pb-2">
-                  <span className="text-xs font-bold text-[#10B981] flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {record.date}
-                  </span>
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">
-                    Full Tape Entry
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                  {record.chestCm && (
-                    <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
-                      <span className="text-[10px] text-gray-400 block">Chest</span>
-                      <span className="text-sm font-bold text-white">{record.chestCm} cm</span>
-                    </div>
-                  )}
-                  {record.waistCm && (
-                    <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
-                      <span className="text-[10px] text-gray-400 block">Waist</span>
-                      <span className="text-sm font-bold text-white">{record.waistCm} cm</span>
-                    </div>
-                  )}
-                  {record.shouldersCm && (
-                    <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
-                      <span className="text-[10px] text-gray-400 block">Shoulders</span>
-                      <span className="text-sm font-bold text-white">{record.shouldersCm} cm</span>
-                    </div>
-                  )}
-                  {record.armsCm && (
-                    <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
-                      <span className="text-[10px] text-gray-400 block">Arms</span>
-                      <span className="text-sm font-bold text-white">{record.armsCm} cm</span>
-                    </div>
-                  )}
-                  {record.thighsCm && (
-                    <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
-                      <span className="text-[10px] text-gray-400 block">Thighs</span>
-                      <span className="text-sm font-bold text-white">{record.thighsCm} cm</span>
-                    </div>
-                  )}
-                </div>
+            {measurements.length === 0 ? (
+              <Card className="bg-[#111111] border-[#222222] p-8 text-center text-gray-500">
+                <Ruler className="w-10 h-10 mx-auto mb-2 opacity-30 text-[#10B981]" />
+                <p className="text-xs font-bold text-gray-300">No body measurements recorded yet</p>
+                <p className="text-[11px] text-gray-500 mt-1">Use the tape form above to record chest, waist, shoulder, arm, and thigh measurements.</p>
               </Card>
-            ))}
+            ) : (
+              measurements.map((record) => (
+                <Card key={record.id} className="bg-[#111111] border-[#222222] p-4">
+                  <div className="flex items-center justify-between mb-3 border-b border-[#222222] pb-2">
+                    <span className="text-xs font-bold text-[#10B981] flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5" />
+                      {record.date}
+                    </span>
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wider">
+                      Full Tape Entry
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    {record.chestCm && (
+                      <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                        <span className="text-[10px] text-gray-400 block">Chest</span>
+                        <span className="text-sm font-bold text-white">{record.chestCm} cm</span>
+                      </div>
+                    )}
+                    {record.waistCm && (
+                      <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                        <span className="text-[10px] text-gray-400 block">Waist</span>
+                        <span className="text-sm font-bold text-white">{record.waistCm} cm</span>
+                      </div>
+                    )}
+                    {record.shouldersCm && (
+                      <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                        <span className="text-[10px] text-gray-400 block">Shoulders</span>
+                        <span className="text-sm font-bold text-white">{record.shouldersCm} cm</span>
+                      </div>
+                    )}
+                    {record.armsCm && (
+                      <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                        <span className="text-[10px] text-gray-400 block">Arms</span>
+                        <span className="text-sm font-bold text-white">{record.armsCm} cm</span>
+                      </div>
+                    )}
+                    {record.thighsCm && (
+                      <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                        <span className="text-[10px] text-gray-400 block">Thighs</span>
+                        <span className="text-sm font-bold text-white">{record.thighsCm} cm</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -688,38 +754,46 @@ export const ProgressView: React.FC = () => {
           </Card>
 
           {/* PR Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {prs.map((pr) => {
-              const diff = pr.currentPRWeightKg - pr.previousPRWeightKg;
-              return (
-                <Card key={pr.id} className="bg-[#111111] border-[#222222] p-4 relative overflow-hidden">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                      <Dumbbell className="w-4 h-4 text-[#10B981]" />
-                      {pr.exerciseName}
-                    </h3>
-                    {diff > 0 && (
-                      <span className="text-[10px] font-extrabold text-[#10B981] bg-[#10B981]/15 border border-[#10B981]/30 px-2.5 py-0.5 rounded-full">
-                        +{diff} kg Improvement
+          {prs.length === 0 ? (
+            <Card className="bg-[#111111] border-[#222222] p-8 text-center text-gray-500">
+              <Award className="w-10 h-10 mx-auto mb-2 opacity-30 text-amber-400" />
+              <p className="text-xs font-bold text-gray-300">No Personal Records recorded yet</p>
+              <p className="text-[11px] text-gray-500 mt-1">Log your top lifts above to build your strength history.</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {prs.map((pr) => {
+                const diff = pr.currentPRWeightKg - pr.previousPRWeightKg;
+                return (
+                  <Card key={pr.id} className="bg-[#111111] border-[#222222] p-4 relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                        <Dumbbell className="w-4 h-4 text-[#10B981]" />
+                        {pr.exerciseName}
+                      </h3>
+                      {diff > 0 && (
+                        <span className="text-[10px] font-extrabold text-[#10B981] bg-[#10B981]/15 border border-[#10B981]/30 px-2.5 py-0.5 rounded-full">
+                          +{diff} kg Improvement
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-baseline gap-3 my-2">
+                      <span className="text-3xl font-black text-white font-mono">
+                        {pr.currentPRWeightKg} <span className="text-sm text-gray-400 font-sans font-normal">kg</span>
                       </span>
-                    )}
-                  </div>
+                      <span className="text-xs text-gray-400 font-medium">x {pr.reps} Reps</span>
+                    </div>
 
-                  <div className="flex items-baseline gap-3 my-2">
-                    <span className="text-3xl font-black text-white font-mono">
-                      {pr.currentPRWeightKg} <span className="text-sm text-gray-400 font-sans font-normal">kg</span>
-                    </span>
-                    <span className="text-xs text-gray-400 font-medium">x {pr.reps} Reps</span>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3 border-t border-[#222222] text-[11px] text-gray-500">
-                    <span>Prev: {pr.previousPRWeightKg > 0 ? `${pr.previousPRWeightKg} kg` : 'None'}</span>
-                    <span>Set on {pr.date}</span>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                    <div className="flex items-center justify-between pt-3 border-t border-[#222222] text-[11px] text-gray-500">
+                      <span>Prev: {pr.previousPRWeightKg > 0 ? `${pr.previousPRWeightKg} kg` : 'None'}</span>
+                      <span>Set on {pr.date}</span>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

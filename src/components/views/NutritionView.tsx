@@ -10,6 +10,14 @@ import {
   DailyNutritionGoals,
 } from '../../types';
 import { nutritionService, progressService } from '../../services';
+import { nutritionCoachEngine, EndOfDayAnalysis } from '../../intelligence/nutritionCoachEngine';
+import { stateSynchronizer } from '../../integration/stateSynchronizer';
+import {
+  dailyTransformationService,
+  DailyHistoryRecord,
+} from '../../daily/dailyTransformationService';
+import { DailyTransformationReportModal } from './DailyTransformationReportModal';
+import { DailyTimelineModal } from './DailyTimelineModal';
 import {
   ResponsiveContainer,
   BarChart,
@@ -37,11 +45,30 @@ import {
   Cookie,
   Apple,
   Filter,
+  Brain,
+  Sparkles,
+  ShoppingCart,
+  Lightbulb,
+  ArrowRight,
+  MessageSquare,
+  Send,
+  Calendar,
+  Zap,
+  CheckCircle2,
+  AlertTriangle,
+  ChevronRight,
+  MapPin,
+  Coins,
+  ShieldCheck,
+  RefreshCw,
+  Lock,
+  Unlock,
+  Award,
 } from 'lucide-react';
 
 export const NutritionView: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(progressService.getFormattedDate(0));
-  const [viewTab, setViewTab] = useState<'log' | 'stats'>('log');
+  const [viewTab, setViewTab] = useState<'log' | 'analysis' | 'local' | 'planner' | 'coach' | 'stats'>('log');
 
   // Data State
   const [allFoods, setAllFoods] = useState<FoodItem[]>([]);
@@ -49,6 +76,9 @@ export const NutritionView: React.FC = () => {
   const [waterLog, setWaterLog] = useState<WaterLog>({ date: selectedDate, ml: 0, targetMl: 3000 });
   const [goals, setGoals] = useState<DailyNutritionGoals>(nutritionService.getNutritionGoals());
   const [weeklyStats, setWeeklyStats] = useState(nutritionService.getWeeklyStats());
+  const [eodAnalysis, setEodAnalysis] = useState<EndOfDayAnalysis>(
+    nutritionCoachEngine.generateAnalysis(selectedDate)
+  );
 
   // Modal / Search State
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -68,16 +98,61 @@ export const NutritionView: React.FC = () => {
   const [cfServing, setCfServing] = useState<string>('');
   const [cfCategory, setCfCategory] = useState<FoodCategory>('Snack');
 
+  // Conversational AI Coach State
+  const [coachQueryInput, setCoachQueryInput] = useState<string>('');
+  const [activeCoachResponse, setActiveCoachResponse] = useState<{
+    answer: string;
+    suggestedFoods: { name: string; costInr: number; protein: number; calories: number; location: string }[];
+  } | null>(null);
+
+  // Daily Transformation Pipeline State
+  const [isDayLocked, setIsDayLocked] = useState<boolean>(false);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [showTimelineModal, setShowTimelineModal] = useState<boolean>(false);
+  const [completedRecord, setCompletedRecord] = useState<DailyHistoryRecord | null>(null);
+
   useEffect(() => {
     refreshData();
+    const unsubscribe = stateSynchronizer.subscribe(() => {
+      refreshData();
+    });
+    return () => unsubscribe();
   }, [selectedDate]);
 
   const refreshData = () => {
     setAllFoods(nutritionService.getAllFoods());
-    setMealLogs(nutritionService.getMealLogsForDate(selectedDate));
+    const currentMeals = nutritionService.getMealLogsForDate(selectedDate);
+    setMealLogs(currentMeals);
     setWaterLog(nutritionService.getWaterForDate(selectedDate));
     setGoals(nutritionService.getNutritionGoals());
     setWeeklyStats(nutritionService.getWeeklyStats());
+    setEodAnalysis(nutritionCoachEngine.generateAnalysis(selectedDate));
+
+    // Refresh day lock and history record
+    const locked = dailyTransformationService.isDayLocked(selectedDate);
+    setIsDayLocked(locked);
+    const existingRec = dailyTransformationService.getDailyHistoryRecord(selectedDate);
+    setCompletedRecord(existingRec);
+  };
+
+  // Readiness Check for Complete Today's Nutrition (Part 1)
+  const completionCheck = useMemo(() => {
+    return dailyTransformationService.checkCanCompleteDay(selectedDate);
+  }, [selectedDate, mealLogs]);
+
+  const handleCompleteTodayNutrition = () => {
+    if (!completionCheck.canComplete) return;
+    const record = dailyTransformationService.executeCompleteDayPipeline(selectedDate);
+    setCompletedRecord(record);
+    setIsDayLocked(true);
+    setShowReportModal(true);
+    refreshData();
+  };
+
+  const handleUnlockDay = () => {
+    dailyTransformationService.setDayLock(selectedDate, false);
+    setIsDayLocked(false);
+    refreshData();
   };
 
   // Water Actions
@@ -85,6 +160,8 @@ export const NutritionView: React.FC = () => {
     const updated = nutritionService.addWaterIntake(selectedDate, ml);
     setWaterLog(updated);
     setWeeklyStats(nutritionService.getWeeklyStats());
+    setEodAnalysis(nutritionCoachEngine.generateAnalysis(selectedDate));
+    stateSynchronizer.notifySubscribers();
   };
 
   // Meal Actions
@@ -126,11 +203,13 @@ export const NutritionView: React.FC = () => {
     setIsSearchOpen(false);
     setSelectedFood(null);
     refreshData();
+    stateSynchronizer.notifySubscribers();
   };
 
   const handleDeleteMealItem = (id: string) => {
     nutritionService.deleteMealLog(id);
     refreshData();
+    stateSynchronizer.notifySubscribers();
   };
 
   // Custom Food Add Handler
@@ -156,6 +235,14 @@ export const NutritionView: React.FC = () => {
     setCfCarbs('');
     setCfFat('');
     setCfServing('');
+  };
+
+  // Coach Query Handler
+  const handleAskCoach = (queryText: string) => {
+    if (!queryText.trim()) return;
+    const res = nutritionCoachEngine.answerUserNutritionQuery(queryText, selectedDate);
+    setActiveCoachResponse(res);
+    setCoachQueryInput(queryText);
   };
 
   // Filtered Food Database
@@ -200,25 +287,39 @@ export const NutritionView: React.FC = () => {
     'Fast Food',
   ];
 
+  const quickCoachQueries = [
+    'What should I eat tonight?',
+    'I already ate biryani.',
+    'I only have ₹100.',
+    'I missed breakfast.',
+    'I am eating in the SNS canteen.',
+    'I am going to Annapoorna / A2B.',
+  ];
+
   return (
     <div className="space-y-6 pb-32 px-4 sm:px-6 max-w-5xl mx-auto w-full pt-2">
-      {/* Header Banner */}
+      {/* Header Banner & Location Context */}
       <Card className="bg-[#111111] border-[#222222] p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Utensils className="w-5 h-5 text-[#10B981]" />
-              <h1 className="text-xl sm:text-2xl font-bold text-white">Nutrition Engine</h1>
+              <Brain className="w-6 h-6 text-[#10B981]" />
+              <h1 className="text-xl sm:text-2xl font-bold text-white">AI Nutrition Coach</h1>
+              <span className="bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Saravanampatti Engine
+              </span>
             </div>
-            <p className="text-xs text-gray-400">
-              Track calories, macros, Indian meals, and hydration with local offline storage.
+            <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
+              <MapPin className="w-3.5 h-3.5 text-rose-400" />
+              <span>Coimbatore, Tamil Nadu • Near SNS College of Technology • Monthly Budget: ₹4500</span>
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Tab Navigation Controls */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             <button
               onClick={() => setViewTab('log')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap ${
                 viewTab === 'log'
                   ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
                   : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
@@ -227,20 +328,70 @@ export const NutritionView: React.FC = () => {
               Meal Tracker
             </button>
             <button
+              onClick={() => setViewTab('analysis')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap flex items-center gap-1 ${
+                viewTab === 'analysis'
+                  ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
+                  : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI Analysis</span>
+            </button>
+            <button
+              onClick={() => setViewTab('local')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap ${
+                viewTab === 'local'
+                  ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
+                  : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
+              }`}
+            >
+              Local Foods
+            </button>
+            <button
+              onClick={() => setViewTab('planner')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap ${
+                viewTab === 'planner'
+                  ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
+                  : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
+              }`}
+            >
+              Next Day & Grocery
+            </button>
+            <button
+              onClick={() => setViewTab('coach')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap flex items-center gap-1 ${
+                viewTab === 'coach'
+                  ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
+                  : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>AI Dietitian</span>
+            </button>
+            <button
               onClick={() => setViewTab('stats')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap ${
                 viewTab === 'stats'
                   ? 'bg-[#10B981] text-black shadow-lg shadow-[#10B981]/15'
                   : 'bg-[#181818] border border-[#262626] text-gray-400 hover:text-white'
               }`}
             >
-              Analytics
+              Stats
+            </button>
+            <button
+              onClick={() => setShowTimelineModal(true)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all whitespace-nowrap bg-purple-500/10 border border-purple-500/30 text-purple-400 hover:bg-purple-500/20 flex items-center gap-1"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Timeline History</span>
             </button>
           </div>
         </div>
       </Card>
 
-      {viewTab === 'log' ? (
+      {/* VIEW TAB 1: MEAL TRACKER */}
+      {viewTab === 'log' && (
         <>
           {/* Daily Macros Overview Card */}
           <Card className="bg-[#111111] border-[#222222] p-5 space-y-5">
@@ -449,9 +600,652 @@ export const NutritionView: React.FC = () => {
               );
             })}
           </div>
+
+          {/* PART 1 & PART 2: COMPLETE TODAY'S NUTRITION BUTTON & LOCK CARD */}
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-4 mt-4">
+            {isDayLocked ? (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-[#181818] rounded-2xl border border-[#10B981]/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#10B981]">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <span>🔒 Today's Nutrition Log is Locked & Saved</span>
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        Permanently saved under {selectedDate}. All transformation engines synced.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setShowReportModal(true)}
+                      className="text-xs font-bold py-2 px-3 text-[#10B981]"
+                      icon={<Sparkles className="w-3.5 h-3.5" />}
+                    >
+                      View Report
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleUnlockDay}
+                      className="text-xs font-bold py-2 px-3 text-amber-400"
+                      icon={<Unlock className="w-3.5 h-3.5" />}
+                    >
+                      Edit Day
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Completion Metrics Summary Badges */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                  <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                    <span className="text-[10px] text-gray-400 block">Breakfast</span>
+                    <span className="font-bold text-[#10B981]">Logged ✓</span>
+                  </div>
+                  <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                    <span className="text-[10px] text-gray-400 block">Lunch</span>
+                    <span className="font-bold text-[#10B981]">Logged ✓</span>
+                  </div>
+                  <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                    <span className="text-[10px] text-gray-400 block">Dinner</span>
+                    <span className="font-bold text-[#10B981]">Logged ✓</span>
+                  </div>
+                  <div className="bg-[#181818] p-2.5 rounded-xl border border-[#262626]">
+                    <span className="text-[10px] text-gray-400 block">Coach Score</span>
+                    <span className="font-bold text-amber-400">{completedRecord?.coachReview?.overallScore || 84}/100</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#222222] pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-[#10B981]" />
+                      <span>Complete Today's Transformation Loop</span>
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      Requires Breakfast, Lunch, & Dinner. Automatically updates AI Coach, Workout Planner, & Memory Engine.
+                    </p>
+                  </div>
+
+                  {/* Meal Logged Badges */}
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span
+                      className={`px-2 py-0.5 rounded-md border font-bold ${
+                        completionCheck.hasBreakfast
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      B: {completionCheck.hasBreakfast ? '✓' : 'Missing'}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md border font-bold ${
+                        completionCheck.hasLunch
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      L: {completionCheck.hasLunch ? '✓' : 'Missing'}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md border font-bold ${
+                        completionCheck.hasDinner
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      D: {completionCheck.hasDinner ? '✓' : 'Missing'}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  disabled={!completionCheck.canComplete}
+                  onClick={handleCompleteTodayNutrition}
+                  className={`w-full py-4 rounded-2xl font-black text-sm transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+                    completionCheck.canComplete
+                      ? 'bg-gradient-to-r from-[#10B981] to-emerald-600 text-black shadow-lg shadow-[#10B981]/20 hover:scale-[1.01]'
+                      : 'bg-[#1a1a1a] border border-[#2a2a2a] text-gray-500 cursor-not-allowed opacity-70'
+                  }`}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>✓ Complete Today's Nutrition</span>
+                </button>
+
+                {!completionCheck.canComplete && (
+                  <p className="text-[11px] text-amber-400/90 text-center font-medium">
+                    ⚠️ Please log {completionCheck.missingMeals.join(', ')} to activate Complete Today's Nutrition.
+                  </p>
+                )}
+              </div>
+            )}
+          </Card>
         </>
-      ) : (
-        /* STATISTICS TAB */
+      )}
+
+      {/* VIEW TAB 2: END OF DAY AI NUTRITION ANALYSIS */}
+      {viewTab === 'analysis' && (
+        <div className="space-y-5">
+          {!eodAnalysis.hasLoggedMeals ? (
+            /* Part 11: Empty State */
+            <Card className="bg-[#111111] border-[#222222] p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-[#181818] border border-[#262626] flex items-center justify-center mx-auto text-[#10B981]">
+                <Utensils className="w-6 h-6" />
+              </div>
+              <h2 className="text-base font-bold text-white">No Meals Logged Today</h2>
+              <p className="text-xs text-gray-400 max-w-md mx-auto">
+                No meals logged today. Log your breakfast to begin AI nutrition analysis.
+              </p>
+              <Button
+                variant="primary"
+                onClick={() => setViewTab('log')}
+                className="text-xs font-bold py-2.5 px-5 mt-2"
+                icon={<Plus className="w-4 h-4" />}
+              >
+                Log Today's First Meal
+              </Button>
+            </Card>
+          ) : (
+            <>
+              {/* Executive Summary Header */}
+              <Card className="bg-[#111111] border-[#222222] p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-[#10B981]" />
+                    <h2 className="text-base font-bold text-white">End of Day AI Analysis</h2>
+                  </div>
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                    {eodAnalysis.scores.hydrationScore >= 80 ? 'Grade A Protocol' : 'Requires Optimization'}
+                  </span>
+                </div>
+
+                <div className="p-4 bg-[#181818] rounded-2xl border border-[#262626] space-y-2">
+                  <h3 className="text-sm font-black text-white">{eodAnalysis.analysis.overallSummary}</h3>
+                  <p className="text-xs text-gray-300 leading-relaxed">{eodAnalysis.analysis.whySucceededOrFailed}</p>
+                  <div className="flex items-center gap-2 pt-2 border-t border-[#222222] text-xs text-[#10B981] font-bold">
+                    <ArrowRight className="w-4 h-4" />
+                    <span>Tomorrow's Priority: {eodAnalysis.analysis.whatToBeDoneTomorrow}</span>
+                  </div>
+                </div>
+
+                {/* Part 9: Insight Cards Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                  <div className="bg-[#181818] p-3.5 rounded-2xl border border-[#262626] space-y-1">
+                    <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Biggest Win</span>
+                    </div>
+                    <p className="text-xs text-white font-medium">{eodAnalysis.scores.biggestWin}</p>
+                  </div>
+
+                  <div className="bg-[#181818] p-3.5 rounded-2xl border border-[#262626] space-y-1">
+                    <div className="flex items-center gap-1.5 text-rose-400 text-xs font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Biggest Bottleneck</span>
+                    </div>
+                    <p className="text-xs text-white font-medium">{eodAnalysis.scores.biggestMistake}</p>
+                  </div>
+
+                  <div className="bg-[#181818] p-3.5 rounded-2xl border border-[#262626] space-y-1">
+                    <div className="flex items-center gap-1.5 text-blue-400 text-xs font-bold">
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>Best Protein Ratio</span>
+                    </div>
+                    <p className="text-xs text-white font-medium">{eodAnalysis.scores.mostEfficientProteinSource}</p>
+                  </div>
+
+                  <div className="bg-[#181818] p-3.5 rounded-2xl border border-[#262626] space-y-1">
+                    <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>Budget Rating</span>
+                    </div>
+                    <p className="text-xs text-white font-medium">{eodAnalysis.scores.budgetEfficiencyRating}</p>
+                  </div>
+                </div>
+
+                {/* Score Meters */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                  <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] text-center">
+                    <span className="text-[10px] text-gray-400 block">Hydration Score</span>
+                    <span className="text-lg font-black text-blue-400">{eodAnalysis.scores.hydrationScore}%</span>
+                  </div>
+                  <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] text-center">
+                    <span className="text-[10px] text-gray-400 block">Recovery Score</span>
+                    <span className="text-lg font-black text-[#10B981]">{eodAnalysis.scores.recoveryScore}%</span>
+                  </div>
+                  <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] text-center">
+                    <span className="text-[10px] text-gray-400 block">Macro Balance</span>
+                    <span className="text-lg font-black text-amber-400">{eodAnalysis.scores.macroBalanceScore}%</span>
+                  </div>
+                  <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] text-center">
+                    <span className="text-[10px] text-gray-400 block">Meal Timing</span>
+                    <span className="text-lg font-black text-purple-400">{eodAnalysis.scores.mealTimingScore}%</span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Part 2: Intelligent Macro Analysis Breakdown */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Protein Deep Dive */}
+                <Card className="bg-[#111111] border-[#222222] p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-blue-400" />
+                      <h3 className="text-sm font-bold text-white">Protein & Hypertrophy Analysis</h3>
+                    </div>
+                    <span
+                      className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${
+                        eodAnalysis.analysis.proteinAnalysis.status === 'Met Target'
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}
+                    >
+                      {eodAnalysis.analysis.proteinAnalysis.status}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {eodAnalysis.analysis.proteinAnalysis.explanation}
+                  </p>
+
+                  {eodAnalysis.analysis.proteinAnalysis.missingGrams > 0 && (
+                    <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] space-y-2">
+                      <span className="text-[11px] font-bold text-blue-400 block">
+                        Local Saravanampatti Protein Fillers:
+                      </span>
+                      <div className="space-y-1.5">
+                        {eodAnalysis.analysis.proteinAnalysis.localFoodSuggestions.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs border-b border-[#222222] pb-1">
+                            <div>
+                              <span className="font-bold text-white block">{item.name}</span>
+                              <span className="text-[10px] text-gray-400">{item.whereToBuy}</span>
+                            </div>
+                            <span className="font-extrabold text-[#10B981]">
+                              +{item.protein}g P • ₹{item.costInInr}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Carbohydrates & Glycogen */}
+                <Card className="bg-[#111111] border-[#222222] p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-amber-400" />
+                      <h3 className="text-sm font-bold text-white">Carbohydrate & Glycogen Fuel</h3>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2.5 py-0.5 rounded-full">
+                      {eodAnalysis.analysis.carbsAnalysis.status} Status
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {eodAnalysis.analysis.carbsAnalysis.workoutImpact}
+                  </p>
+
+                  <div className="bg-[#181818] p-3 rounded-xl border border-[#262626] space-y-1">
+                    <span className="text-[11px] font-bold text-amber-400 block">Recommended Clean Carb Sources:</span>
+                    <ul className="text-xs text-gray-400 space-y-1 list-disc list-inside">
+                      {eodAnalysis.analysis.carbsAnalysis.suggestedCarbSources.map((c, i) => (
+                        <li key={i}>{c}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </Card>
+
+                {/* Fats & Oil Analysis */}
+                <Card className="bg-[#111111] border-[#222222] p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Apple className="w-4 h-4 text-rose-400" />
+                      <h3 className="text-sm font-bold text-white">Dietary Fats & Cooking Oil</h3>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-rose-400 bg-rose-400/10 border border-rose-400/20 px-2.5 py-0.5 rounded-full">
+                      {eodAnalysis.analysis.fatAnalysis.status}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {eodAnalysis.analysis.fatAnalysis.explanation}
+                  </p>
+
+                  <p className="text-xs text-gray-400 italic">
+                    💡 Recommendation: {eodAnalysis.analysis.fatAnalysis.recommendation}
+                  </p>
+                </Card>
+
+                {/* Part 4: Budget Adherence */}
+                <Card className="bg-[#111111] border-[#222222] p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-sm font-bold text-white">Student Budget Adherence</h3>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2.5 py-0.5 rounded-full">
+                      ₹{eodAnalysis.budgetAdherence.dailyEstimatedCostInr} / ₹{eodAnalysis.budgetAdherence.dailyBudgetCapInr} Day
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    Monthly Cap: ₹4500 (~₹150/day). Your estimated food spend today is ₹
+                    {eodAnalysis.budgetAdherence.dailyEstimatedCostInr}.
+                  </p>
+
+                  <div className="p-3 bg-[#181818] rounded-xl border border-[#262626] text-xs text-[#10B981]">
+                    <span>💰 Smart Tip: {eodAnalysis.budgetAdherence.savingTip}</span>
+                  </div>
+                </Card>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* VIEW TAB 3: LOCAL FOODS & SUBSTITUTIONS */}
+      {viewTab === 'local' && (
+        <div className="space-y-5">
+          {/* Header Card */}
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-2">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-rose-500" />
+              <h2 className="text-base font-bold text-white">Saravanampatti & SNS Canteen Local Food Guide</h2>
+            </div>
+            <p className="text-xs text-gray-400">
+              Hyper-local, highly available South Indian student foods priced for a ₹4500/month budget. No imported foods!
+            </p>
+          </Card>
+
+          {/* Part 5: Food Substitution Engine */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-[#10B981]" />
+              <span>Smart Macro Substitution Engine</span>
+            </h3>
+
+            {eodAnalysis.substitutions.length === 0 ? (
+              <Card className="bg-[#111111] border-[#222222] p-4 text-xs text-gray-400">
+                All daily macros are currently balanced! No urgent substitutions required.
+              </Card>
+            ) : (
+              eodAnalysis.substitutions.map((sub, idx) => (
+                <Card key={idx} className="bg-[#111111] border-[#222222] p-5 space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-2">
+                    <span className="text-xs font-bold text-white">
+                      Needed: {sub.deficitOrExcessAmount}g {sub.targetMacro}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{sub.reasoning}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {sub.options.map((opt, oIdx) => (
+                      <div
+                        key={oIdx}
+                        className="bg-[#181818] p-3.5 rounded-2xl border border-[#262626] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">{opt.title}</span>
+                          <span className="text-xs font-extrabold text-[#10B981]">₹{opt.costInInr}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-400">{opt.description}</p>
+                        <div className="flex items-center justify-between pt-1 text-[10px] text-gray-500">
+                          <span>+{opt.proteinGrams}g Protein</span>
+                          <span>{opt.calories} kcal</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Saravanampatti Top 5 Budget Protein Ranker */}
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Coins className="w-4 h-4 text-amber-400" />
+              <span>Top 5 Saravanampatti Budget Protein Options</span>
+            </h3>
+
+            <div className="space-y-2.5">
+              {[
+                { name: 'Soya Chunks Curry / Bhurji', protein: '52g Protein', cost: '₹25', venue: 'Hostel Mess / Grocery', desc: 'Highest protein per rupee in India.' },
+                { name: 'Boiled Eggs (4 Whole Eggs)', protein: '24g Protein', cost: '₹28', venue: 'SNS Canteen / Gate Stall', desc: 'Complete amino acid profile.' },
+                { name: 'Curd (200g) + Roasted Chana (50g)', protein: '22g Protein', cost: '₹35', venue: 'Saravanampatti Mini Mart', desc: 'Zero cooking required.' },
+                { name: 'Grilled / Boiled Chicken Breast', protein: '45g Protein', cost: '₹85', venue: 'Local Saravanampatti Mess', desc: 'Pure anabolic muscle food.' },
+                { name: 'Raw Paneer Cubes / Tikka (100g)', protein: '18g Protein', cost: '₹45', venue: 'A2B / Annapoorna / Dairy', desc: 'Slow-release casein protein.' },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className="p-3 bg-[#181818] rounded-xl border border-[#262626] flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-lg bg-[#222222] text-gray-400 font-extrabold flex items-center justify-center text-[11px]">
+                      #{i + 1}
+                    </span>
+                    <div>
+                      <p className="font-bold text-white">{item.name}</p>
+                      <p className="text-[10px] text-gray-400">{item.venue} • {item.desc}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="font-extrabold text-blue-400 block">{item.protein}</span>
+                    <span className="text-[10px] text-[#10B981] font-bold">{item.cost}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* VIEW TAB 4: TOMORROW'S PLAN & SMART GROCERY */}
+      {viewTab === 'planner' && (
+        <div className="space-y-5">
+          {/* Tomorrow's Tailored Plan */}
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-purple-400" />
+                <h2 className="text-base font-bold text-white">Tomorrow's AI Nutrition Protocol</h2>
+              </div>
+              <span className="text-xs font-bold text-purple-400 bg-purple-400/10 border border-purple-400/20 px-3 py-1 rounded-full">
+                Fueling: {eodAnalysis.nextDayPlan.workoutTypeTomorrow}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {eodAnalysis.nextDayPlan.meals.map((meal, idx) => (
+                <div key={idx} className="bg-[#181818] p-4 rounded-2xl border border-[#262626] space-y-2">
+                  <div className="flex items-center justify-between border-b border-[#222222] pb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-extrabold text-[#10B981] bg-[#10B981]/10 px-2 py-0.5 rounded">
+                        {meal.time}
+                      </span>
+                      <span className="text-xs font-bold text-white">{meal.mealType}</span>
+                    </div>
+                    <span className="text-xs font-extrabold text-white">₹{meal.estimatedCostInr}</span>
+                  </div>
+
+                  <p className="text-xs font-medium text-gray-200">{meal.suggestedFood}</p>
+
+                  <div className="flex items-center justify-between text-[10px] text-gray-400 pt-1">
+                    <span>📍 {meal.location}</span>
+                    <span className="text-blue-400 font-bold">
+                      {meal.protein}g P | {meal.calories} kcal
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Water Schedule */}
+            <div className="p-4 bg-[#181818] rounded-2xl border border-[#262626] space-y-2">
+              <h3 className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                <Droplets className="w-3.5 h-3.5" />
+                <span>Tomorrow's Hydration Schedule (3.0 Liters)</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-300">
+                {eodAnalysis.nextDayPlan.waterSchedule.map((w, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                    <span>{w}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          {/* Part 7: Smart Grocery List */}
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#222222] pb-3">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-[#10B981]" />
+                <h2 className="text-base font-bold text-white">Saravanampatti Smart Grocery Assistant</h2>
+              </div>
+              <span className="text-xs font-extrabold text-[#10B981]">
+                Total Basket: ₹
+                {eodAnalysis.groceryList.reduce((sum, item) => sum + item.estimatedCostInr, 0)}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {eodAnalysis.groceryList.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 bg-[#181818] rounded-2xl border border-[#262626] flex items-center justify-between text-xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white">{item.name}</span>
+                      <span className="text-[9px] font-bold text-gray-400 bg-[#222222] px-2 py-0.5 rounded">
+                        {item.category}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Qty: {item.quantity} • Lasts ~{item.lastsDays} days
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="font-extrabold text-[#10B981] block">₹{item.estimatedCostInr}</span>
+                    <span className="text-[10px] text-blue-400 font-bold">
+                      +{item.proteinContributionGrams}g Total Protein
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* VIEW TAB 5: CONVERSATIONAL AI DIETITIAN */}
+      {viewTab === 'coach' && (
+        <div className="space-y-5">
+          <Card className="bg-[#111111] border-[#222222] p-5 space-y-4">
+            <div className="flex items-center gap-2 border-b border-[#222222] pb-3">
+              <MessageSquare className="w-5 h-5 text-[#10B981]" />
+              <div>
+                <h2 className="text-base font-bold text-white">Conversational AI Dietitian Query Bar</h2>
+                <p className="text-xs text-gray-400">
+                  Ask real-world questions based on today's remaining macro gaps and local Coimbatore choices!
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Chips */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-gray-400 block">Tap Quick Queries:</span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {quickCoachQueries.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleAskCoach(q)}
+                    className="px-3 py-1.5 rounded-xl bg-[#181818] border border-[#262626] hover:border-[#10B981] text-xs font-bold text-gray-300 hover:text-white transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    "{q}"
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Search / Ask Input */}
+            <div className="flex items-center gap-2 pt-2">
+              <input
+                type="text"
+                placeholder="Ask anything (e.g. 'I have ₹80 in Saravanampatti, what should I eat?')..."
+                value={coachQueryInput}
+                onChange={(e) => setCoachQueryInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAskCoach(coachQueryInput);
+                }}
+                className="flex-1 bg-[#181818] border border-[#262626] rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#10B981]"
+              />
+              <Button
+                variant="primary"
+                onClick={() => handleAskCoach(coachQueryInput)}
+                className="py-2.5 px-4 text-xs font-bold"
+                icon={<Send className="w-4 h-4" />}
+              >
+                Ask Coach
+              </Button>
+            </div>
+          </Card>
+
+          {/* Coach Response Card */}
+          {activeCoachResponse && (
+            <Card className="bg-[#111111] border-[#10B981]/30 p-5 space-y-4 animate-fadeIn">
+              <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-[#222222] pb-2">
+                <Brain className="w-4 h-4 text-[#10B981]" />
+                <span>AI Dietitian Advice</span>
+              </div>
+
+              <p className="text-xs text-gray-200 leading-relaxed font-medium">
+                {activeCoachResponse.answer}
+              </p>
+
+              {activeCoachResponse.suggestedFoods.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-[#222222]">
+                  <span className="text-[11px] font-bold text-[#10B981] block">
+                    Recommended Local Meal Matches:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {activeCoachResponse.suggestedFoods.map((f, i) => (
+                      <div key={i} className="bg-[#181818] p-3 rounded-xl border border-[#262626] space-y-1">
+                        <div className="flex items-center justify-between text-xs font-bold text-white">
+                          <span>{f.name}</span>
+                          <span className="text-[#10B981]">₹{f.costInr}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-gray-400">
+                          <span>📍 {f.location}</span>
+                          <span className="text-blue-400 font-bold">
+                            +{f.protein}g Protein ({f.calories} kcal)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* VIEW TAB 6: STATISTICS TAB */}
+      {viewTab === 'stats' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Card className="bg-[#111111] border-[#222222] p-4 text-center">
@@ -760,6 +1554,25 @@ export const NutritionView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Daily Transformation Report Modal */}
+      <DailyTransformationReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        record={completedRecord}
+        onUnlockEdit={handleUnlockDay}
+      />
+
+      {/* Daily Timeline Modal */}
+      <DailyTimelineModal
+        isOpen={showTimelineModal}
+        onClose={() => setShowTimelineModal(false)}
+        onSelectRecord={(rec) => {
+          setCompletedRecord(rec);
+          setShowTimelineModal(false);
+          setShowReportModal(true);
+        }}
+      />
     </div>
   );
 };

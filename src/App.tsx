@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { CheckIn, TabType, UserProfile } from './types';
 import { profileService, checkInService } from './services';
-import { Header } from './components/layout/Header';
-import { BottomNav } from './components/layout/BottomNav';
+import { AppLayout } from './components/layout/AppLayout';
 import { DashboardView } from './components/views/DashboardView';
 import { CheckInView } from './components/views/CheckInView';
 import { WorkoutEngineView } from './components/views/WorkoutEngineView';
@@ -43,53 +42,47 @@ export default function App() {
   const formattedLocation = `${profile.city || 'Coimbatore'}, ${profile.country || 'India'}`;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white flex flex-col font-['Plus_Jakarta_Sans',sans-serif] selection:bg-[#10B981] selection:text-black">
-      {/* Header */}
-      <Header userName={profile.name || 'Anbu'} location={formattedLocation} />
-
-      {/* Main Content Area */}
-      <main className="flex-1 w-full">
-        {activeTab === 'dashboard' && (
-          showCheckInView ? (
-            <CheckInView
-              profile={profile}
-              onCheckInComplete={handleCheckInComplete}
-              onSkip={todayCheckIn ? () => setShowCheckInView(false) : undefined}
-            />
-          ) : (
-            <DashboardView
-              profile={profile}
-              checkIn={todayCheckIn}
-              onStartWorkout={handleStartWorkout}
-              onRetakeCheckIn={() => setShowCheckInView(true)}
-              onNavigateToProgress={() => setActiveTab('progress')}
-            />
-          )
-        )}
-        {activeTab === 'workout' && (
-          <WorkoutEngineView onBackToDashboard={() => setActiveTab('dashboard')} />
-        )}
-        {activeTab === 'ai_coach' && (
-          <AICoachView />
-        )}
-        {activeTab === 'nutrition' && (
-          <NutritionView />
-        )}
-        {activeTab === 'knowledge' && (
-          <KnowledgeView />
-        )}
-        {activeTab === 'profile' && (
-          <ProfileView profile={profile} onSaveProfile={handleSaveProfile} />
-        )}
-        {activeTab === 'progress' && (
-          <ProgressView />
-        )}
-      </main>
-
-      {/* Bottom Navigation */}
-      <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
-    </div>
+    <AppLayout
+      activeTab={activeTab}
+      onTabChange={handleTabChange}
+      profile={profile}
+      formattedLocation={formattedLocation}
+    >
+      {activeTab === 'dashboard' && (
+        showCheckInView ? (
+          <CheckInView
+            profile={profile}
+            onCheckInComplete={handleCheckInComplete}
+            onSkip={todayCheckIn ? () => setShowCheckInView(false) : undefined}
+          />
+        ) : (
+          <DashboardView
+            profile={profile}
+            checkIn={todayCheckIn}
+            onStartWorkout={handleStartWorkout}
+            onRetakeCheckIn={() => setShowCheckInView(true)}
+            onNavigateToProgress={() => setActiveTab('progress')}
+          />
+        )
+      )}
+      {activeTab === 'workout' && (
+        <WorkoutEngineView onBackToDashboard={() => setActiveTab('dashboard')} />
+      )}
+      {activeTab === 'ai_coach' && (
+        <AICoachView />
+      )}
+      {activeTab === 'nutrition' && (
+        <NutritionView />
+      )}
+      {activeTab === 'knowledge' && (
+        <KnowledgeView />
+      )}
+      {activeTab === 'profile' && (
+        <ProfileView profile={profile} onSaveProfile={handleSaveProfile} />
+      )}
+      {activeTab === 'progress' && (
+        <ProgressView />
+      )}
+    </AppLayout>
   );
 }
-
-

@@ -2,11 +2,30 @@ import {
   FoodItem,
   MealLogItem,
   MealType,
+  FoodCategory,
   WaterLog,
   DailyNutritionGoals,
   WeeklyNutritionDayStats,
 } from '../types';
 import { INDIAN_FOOD_DATABASE } from './foodDatabase';
+import { LOCAL_FOOD_KNOWLEDGE_BASE } from '../knowledge/localFoodDatabase';
+
+const localFoodsAsFoodItems: FoodItem[] = LOCAL_FOOD_KNOWLEDGE_BASE.map((item) => ({
+  id: item.id,
+  name: item.name,
+  calories: item.calories,
+  protein: item.protein,
+  carbs: item.carbs,
+  fat: item.fat,
+  servingSize: item.servingSize,
+  category: (item.category === 'Biryani & Rice'
+    ? 'Rice'
+    : item.category === 'Eggs & Chicken' || item.category === 'Vegetarian Protein'
+    ? 'Protein'
+    : item.category === 'Budget Snack'
+    ? 'Snack'
+    : 'South Indian') as FoodCategory,
+}));
 
 const MEALS_KEY = 'physique_ai_meal_logs';
 const WATER_KEY = 'physique_ai_water_logs';
@@ -174,17 +193,18 @@ const getSeedMeals = (): MealLogItem[] => {
 
 // --- Food Database Search & Storage ---
 export const getAllFoods = (): FoodItem[] => {
-  if (typeof window === 'undefined') return INDIAN_FOOD_DATABASE;
+  const base = [...localFoodsAsFoodItems, ...INDIAN_FOOD_DATABASE];
+  if (typeof window === 'undefined') return base;
   try {
     const raw = localStorage.getItem(CUSTOM_FOODS_KEY);
     if (raw) {
       const customItems: FoodItem[] = JSON.parse(raw);
-      return [...INDIAN_FOOD_DATABASE, ...customItems];
+      return [...customItems, ...base];
     }
   } catch (err) {
     console.error('Error loading custom foods', err);
   }
-  return INDIAN_FOOD_DATABASE;
+  return base;
 };
 
 export const addCustomFood = (food: Omit<FoodItem, 'id'>): FoodItem[] => {
@@ -227,17 +247,14 @@ export const saveNutritionGoals = (goals: DailyNutritionGoals): DailyNutritionGo
 
 // --- Meal Logs Storage ---
 export const getAllMealLogs = (): MealLogItem[] => {
-  if (typeof window === 'undefined') return getSeedMeals();
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(MEALS_KEY);
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.error('Error loading meal logs', err);
   }
-
-  const initial = getSeedMeals();
-  localStorage.setItem(MEALS_KEY, JSON.stringify(initial));
-  return initial;
+  return [];
 };
 
 export const getMealLogsForDate = (date: string): MealLogItem[] => {
@@ -267,23 +284,14 @@ export const deleteMealLog = (id: string): MealLogItem[] => {
 
 // --- Water Tracker Storage ---
 export const getWaterLogs = (): Record<string, WaterLog> => {
-  const today = getFormattedDate(0);
-  const defaultWaterLogs: Record<string, WaterLog> = {
-    [today]: { date: today, ml: 1750, targetMl: 3000 },
-    [getFormattedDate(1)]: { date: getFormattedDate(1), ml: 2500, targetMl: 3000 },
-    [getFormattedDate(2)]: { date: getFormattedDate(2), ml: 3000, targetMl: 3000 },
-    [getFormattedDate(3)]: { date: getFormattedDate(3), ml: 2250, targetMl: 3000 },
-  };
-
-  if (typeof window === 'undefined') return defaultWaterLogs;
+  if (typeof window === 'undefined') return {};
   try {
     const raw = localStorage.getItem(WATER_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Error reading water logs', e);
   }
-  localStorage.setItem(WATER_KEY, JSON.stringify(defaultWaterLogs));
-  return defaultWaterLogs;
+  return {};
 };
 
 export const getWaterForDate = (date: string): WaterLog => {

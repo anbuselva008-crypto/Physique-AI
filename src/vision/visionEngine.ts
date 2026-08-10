@@ -4,6 +4,7 @@ import { visionClient } from './visionClient';
 import { bodyAnalyzer } from './bodyAnalyzer';
 import { comparisonEngine } from './comparisonEngine';
 import { reportGenerator } from './reportGenerator';
+import { monthlyReportStorage } from './monthlyReportStorage';
 import { updatePersona, getPersona } from '../persona';
 import { memoryEngine } from '../ai/memoryEngine';
 import { transformationIntelligenceEngine } from '../intelligence';
@@ -70,7 +71,22 @@ export class VisionEngine {
     });
 
     // 6. AUTO-UPDATE PIPELINE: Phase 3 & Phase 6 Integration
-    // 6a. Persona Engine
+    const visionReport: VisionReport = {
+      photoSet,
+      bodyAnalysis,
+      comparisonDelta,
+      transformationReport,
+      generatedAt: new Date().toISOString(),
+    };
+
+    // 6a. Immutable Monthly Report Storage (Phase 3)
+    try {
+      monthlyReportStorage.saveReport(visionReport);
+    } catch (e) {
+      console.warn('[VisionEngine] Failed to save monthly report:', e);
+    }
+
+    // 6b. Persona Engine
     const currentPersona = getPersona();
     updatePersona({
       body: {
@@ -85,7 +101,7 @@ export class VisionEngine {
       },
     });
 
-    // 6b. Memory Engine
+    // 6c. Memory Engine
     memoryEngine.learn(undefined, undefined, {
       key: `vision_analysis_${month}`,
       value: `Month ${month} Body Analysis: Estimated Body Fat ${bodyAnalysis.bodyFat.estimatedPercentage}%. Strong: ${bodyAnalysis.strongAreas.join(', ')}. Focus: ${bodyAnalysis.weakAreas.join(', ')}.`,
@@ -93,13 +109,13 @@ export class VisionEngine {
       importance: 'high',
     });
 
-    // 6c. Transformation Intelligence Engine (re-runs full loop with updated persona & body metrics)
+    // 6d. Transformation Intelligence Engine (re-runs full loop with updated persona & body metrics)
     transformationIntelligenceEngine.runFullTransformationLoop(1, 1);
 
-    // 6d. Goal Tracker
+    // 6e. Goal Tracker
     goalTracker.evaluateGoals();
 
-    // 6e. State Synchronizer & Event Dispatch (triggers system-wide dashboard, coach, & experience sync)
+    // 6f. State Synchronizer & Event Dispatch (triggers system-wide dashboard, coach, & experience sync)
     try {
       stateSynchronizer.syncAllState();
     } catch {
@@ -107,13 +123,7 @@ export class VisionEngine {
     }
 
     // 7. Return Unified VisionReport
-    return {
-      photoSet,
-      bodyAnalysis,
-      comparisonDelta,
-      transformationReport,
-      generatedAt: new Date().toISOString(),
-    };
+    return visionReport;
   }
 
   /**

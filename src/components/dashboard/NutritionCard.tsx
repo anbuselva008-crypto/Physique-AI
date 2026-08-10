@@ -7,10 +7,11 @@ interface NutritionCardProps {
 }
 
 export const NutritionCard: React.FC<NutritionCardProps> = ({
-  consumedCalories = 1850,
-  targetCalories = 2400,
+  consumedCalories = 0,
+  targetCalories = 2200,
 }) => {
   const caloriePercentage = Math.min(100, Math.round((consumedCalories / targetCalories) * 100));
+  const remainingCalories = Math.max(0, targetCalories - consumedCalories);
 
   return (
     <div className="bg-[#111111] border border-[#222222] rounded-[32px] p-6 flex flex-col justify-between min-h-[200px] hover:border-[#333333] transition-colors">
@@ -23,10 +24,13 @@ export const NutritionCard: React.FC<NutritionCardProps> = ({
 
       <div className="mt-6">
         <p className="text-3xl font-bold text-white tracking-tight">
-          {consumedCalories.toLocaleString()}
+          {remainingCalories.toLocaleString()}
           <span className="text-lg font-normal text-gray-500 ml-1">kcal left</span>
         </p>
-        <div className="w-full bg-[#222222] h-2 rounded-full mt-3 overflow-hidden">
+        <p className="text-xs text-gray-400 mt-1">
+          Consumed: {consumedCalories.toLocaleString()} / {targetCalories.toLocaleString()} kcal
+        </p>
+        <div className="w-full bg-[#222222] h-2 rounded-full mt-2 overflow-hidden">
           <div
             className="bg-[#10B981] h-full rounded-full transition-all duration-300"
             style={{ width: `${caloriePercentage}%` }}

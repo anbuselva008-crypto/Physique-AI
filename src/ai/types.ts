@@ -82,6 +82,20 @@ export interface AIWorkoutContext {
     completionPercentage: number;
   };
   isWorkoutCompleted: boolean;
+  yesterdayRecord?: {
+    title: string;
+    durationMinutes: number;
+    completed: boolean;
+  } | null;
+  tomorrowWorkout?: {
+    title: string;
+    focus: string;
+    durationMinutes: number;
+    recoveryRequired: string;
+    equipment: string;
+    coachFocus: string;
+  } | null;
+  totalCompletedWorkouts?: number;
 }
 
 export interface AIProgressContext {

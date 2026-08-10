@@ -61,82 +61,80 @@ export class PersonaEngineManager {
 
     // 1. Personal
     const personal: UserPersonalDetails = {
-      name: profile.name || 'Student Athlete',
+      name: profile.name || 'SNS Student Athlete',
       age: profile.age || 21,
       gender: storedOverrides.personal?.gender || 'Male',
-      city: profile.city || 'Chennai',
+      city: profile.city || 'Coimbatore',
       state: storedOverrides.personal?.state || 'Tamil Nadu',
-      college: storedOverrides.personal?.college || (memorySummary.collegeOrWorkRoutine ? 'Engineering College' : 'SRM Institute of Science & Tech'),
-      occupation: storedOverrides.personal?.occupation || 'Student & Fitness Enthusiast',
+      college: storedOverrides.personal?.college || 'SNS College of Technology (Saravanampatti)',
+      occupation: storedOverrides.personal?.occupation || 'PG Student & Fitness Enthusiast',
     };
 
     // 2. Body
     const body: UserBodyDetails = {
       height: profile.heightCm || 175,
-      weight: profile.currentWeightKg || 70,
-      estimatedBodyFat: storedOverrides.body?.estimatedBodyFat || 16.5,
+      weight: profile.currentWeightKg || 68,
+      estimatedBodyFat: storedOverrides.body?.estimatedBodyFat || 20.0,
       goalBodyFat: storedOverrides.body?.goalBodyFat || 12.0,
-      bodyType: storedOverrides.body?.bodyType || 'Mesomorph / Athletic',
-      weakAreas: storedOverrides.body?.weakAreas || ['Upper Chest', 'Rear Delts', 'Calves'],
-      strongAreas: storedOverrides.body?.strongAreas || ['Lats / Back', 'Quads', 'Triceps'],
+      bodyType: storedOverrides.body?.bodyType || 'Skinny Fat (Recomp Required)',
+      weakAreas: storedOverrides.body?.weakAreas || ['Chest Density', 'Shoulders', 'Core Definition'],
+      strongAreas: storedOverrides.body?.strongAreas || ['Lats', 'Quads'],
     };
 
     // 3. Fitness
     const fitness: FitnessPersonaDetails = {
-      goal: profile.fitnessGoal || memorySummary.activeGoal || 'Build Lean Muscle & Lose Body Fat',
+      goal: profile.fitnessGoal || memorySummary.activeGoal || 'Transform Skinny Fat to Lean Muscular (12 Months)',
       trainingLevel: profile.trainingExperience || 'Intermediate',
-      preferredWorkoutTime: memorySummary.preferredWorkoutTime || '06:30 AM',
-      preferredWorkoutDays: storedOverrides.fitness?.preferredWorkoutDays || ['Monday', 'Tuesday', 'Thursday', 'Friday', 'Saturday'],
+      preferredWorkoutTime: memorySummary.preferredWorkoutTime || '05:00 PM (After College)',
+      preferredWorkoutDays: storedOverrides.fitness?.preferredWorkoutDays || ['Monday', 'Tuesday', 'Wednesday', 'Friday', 'Saturday'],
       availableEquipment: storedOverrides.fitness?.availableEquipment || [
-        'Barbell',
-        'Dumbbells',
-        'Cable Crossover',
-        'Pull-up Bar',
-        'Incline Bench',
-        'Squat Rack',
+        'Gym Equipment',
+        'Induction Stove (PG Room)',
       ],
     };
 
     // 4. Lifestyle
     const lifestyle: LifestylePersonaDetails = {
-      wakeTime: storedOverrides.lifestyle?.wakeTime || '06:00 AM',
-      sleepTime: storedOverrides.lifestyle?.sleepTime || '11:15 PM',
-      collegeSchedule: memorySummary.collegeOrWorkRoutine || 'Lectures & Labs 08:30 AM - 04:00 PM',
-      examRoutine: storedOverrides.lifestyle?.examRoutine || 'Mid-term exams upcoming; study sessions 08:00 PM - 11:00 PM',
+      wakeTime: storedOverrides.lifestyle?.wakeTime || '06:30 AM',
+      sleepTime: storedOverrides.lifestyle?.sleepTime || '11:30 PM',
+      collegeSchedule: memorySummary.collegeOrWorkRoutine || 'Walk to SNS College 08:30 AM - 04:30 PM',
+      examRoutine: storedOverrides.lifestyle?.examRoutine || 'Regular semester classes & lab submissions',
       averageSleep: todayCheckIn?.sleepHours || memorySummary.typicalSleepHours || 7.5,
       averageStress: checkInStats.todayEnergyLevel ? Math.max(1, 10 - checkInStats.todayEnergyLevel) : 4,
-      averageSteps: storedOverrides.lifestyle?.averageSteps || 8500,
+      averageSteps: storedOverrides.lifestyle?.averageSteps || 9000,
     };
 
     // 5. Diet
     const diet: DietPersonaDetails = {
-      foodBudget: memorySummary.budgetPreference || 'Student Friendly (₹3,500/month)',
-      dietaryPreferences: storedOverrides.diet?.dietaryPreferences || [profile.diet || 'High Protein Non-Veg'],
-      foodsLiked: memorySummary.favoriteFoods.length > 0 ? memorySummary.favoriteFoods : ['Chicken Breast', 'Eggs', 'Oats', 'Peanut Butter', 'Bananas', 'Paneer'],
-      foodsAvoided: storedOverrides.diet?.foodsAvoided || ['Ultra-processed Junk', 'Excessive Deep Fried Snacks'],
-      cookingAbility: storedOverrides.diet?.cookingAbility || 'Basic Hostel Meal Prep & Canteen Customization',
-      hydration: storedOverrides.diet?.hydration || `${((nutritionData.waterLog?.targetMl || 3500) / 1000).toFixed(1)} Liters / day`,
+      foodBudget: memorySummary.budgetPreference || 'Saravanampatti Budget (₹4,500/month ~ ₹150/day)',
+      dietaryPreferences: storedOverrides.diet?.dietaryPreferences || [profile.diet || 'Non-Veg / Eggitarian'],
+      foodsLiked: memorySummary.favoriteFoods.length > 0 ? memorySummary.favoriteFoods : ['Egg Dosa', 'Egg Chapati', 'Boiled Eggs', 'Chicken Biryani', 'Soya Chunks', 'Rice + Sambar'],
+      foodsAvoided: storedOverrides.diet?.foodsAvoided || ['Expensive Imported Foods (Salmon, Avocado, Quinoa)', 'Oily Deep Fried Junk'],
+      cookingAbility: storedOverrides.diet?.cookingAbility || 'Induction Stove (Can only boil eggs & soya; no fridge/microwave)',
+      hydration: storedOverrides.diet?.hydration || `${((nutritionData.waterLog?.targetMl || 3000) / 1000).toFixed(1)} Liters / day`,
     };
 
     // 6. College
     const college: CollegePersonaDetails = {
       collegeName: personal.college,
-      department: storedOverrides.college?.department || 'Computer Science & Engineering',
-      academicYear: storedOverrides.college?.academicYear || '3rd Year',
-      canteenOptions: storedOverrides.college?.canteenOptions || ['Egg Roll / Omelette Stall', 'Boiled Eggs & Juice Corner', 'South Indian Thali'],
-      hostelStatus: storedOverrides.college?.hostelStatus || 'Hostel Resident',
-      scheduleFlexibility: storedOverrides.college?.scheduleFlexibility || 'Moderate (High flexibility on weekends, rigid on lab days)',
+      department: storedOverrides.college?.department || 'Engineering & Technology',
+      academicYear: storedOverrides.college?.academicYear || 'PG / Final Year',
+      canteenOptions: storedOverrides.college?.canteenOptions || ['Egg Dosa / Chapati Stall', 'Boiled Eggs Gate Shop', 'Saravanampatti Mess Thali'],
+      hostelStatus: storedOverrides.college?.hostelStatus || 'PG Resident near SNS College',
+      scheduleFlexibility: storedOverrides.college?.scheduleFlexibility || 'Moderate (Walk to college, workout after college at 5 PM)',
     };
 
     // 7. Constraints
     const constraints: PersonaConstraintsDetails = {
-      availableTime: storedOverrides.constraints?.availableTime || '60 to 75 minutes for workouts',
-      recoveryLimits: storedOverrides.constraints?.recoveryLimits || 'Occasional shoulder fatigue after heavy pressing',
-      budgetLimits: storedOverrides.constraints?.budgetLimits || '₹200 / day maximum food budget',
+      availableTime: storedOverrides.constraints?.availableTime || '60 mins for post-college workout',
+      recoveryLimits: storedOverrides.constraints?.recoveryLimits || 'Skinny-fat recomp protocol',
+      budgetLimits: storedOverrides.constraints?.budgetLimits || '₹150 / day (~₹4,500 / month)',
       collegeConstraints: storedOverrides.constraints?.collegeConstraints || [
-        '75% minimum class attendance requirement',
-        'Limited cooking appliances in hostel room',
-        'Fixed mess timings (Breakfast 7:30-8:30 AM, Dinner 7:30-9:00 PM)',
+        'PG Resident with Induction Stove only',
+        'Can only boil eggs or soya chunks in room',
+        'No refrigerator (must buy fresh daily)',
+        'No microwave',
+        'Walks to SNS College daily',
       ],
     };
 

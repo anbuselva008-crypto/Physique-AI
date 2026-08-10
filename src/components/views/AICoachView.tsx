@@ -332,7 +332,7 @@ How can I help optimize your training or diet today?`,
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] max-w-4xl mx-auto px-3 sm:px-6 py-2">
+    <div className="flex flex-col h-[calc(100dvh-11.5rem-env(safe-area-inset-bottom,0px))] max-w-4xl mx-auto px-3 sm:px-6 py-2">
       {/* Top Header Card */}
       <div className="bg-[#121212] border border-zinc-800 rounded-2xl p-3.5 mb-3 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">

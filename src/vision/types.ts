@@ -48,11 +48,62 @@ export interface ObservationDetail {
   recommendation: string; // Actionable advice
 }
 
+export type QualitativeDevelopmentLevel =
+  | 'Very Limited'
+  | 'Limited'
+  | 'Moderate'
+  | 'Well Developed'
+  | 'Advanced'
+  | 'Elite';
+
+export interface ScientificMuscleGroupAnalysis {
+  muscleGroup: string; // e.g. "Upper Chest", "Deltoids & Shoulders", "Lat Width & Back", "Waistline & Core", "Quads & Hamstrings", "Arms (Biceps & Triceps)"
+  developmentLevel: QualitativeDevelopmentLevel;
+  confidence: 'high' | 'medium' | 'low';
+  observations: string[]; // Specific visible landmarks observed
+  reasoning: string; // Biomechanical & physiological explanation
+  workoutImpact: string; // Program adjustment
+  nutritionImpact?: string;
+  status: 'improved' | 'maintained' | 'slight_regression' | 'regression' | 'insufficient_evidence';
+}
+
+export interface DecisionPipelineFlow {
+  detectedIssue: string; // e.g. "Upper Pectoralis Minor/Major Lagging"
+  evidence: string[]; // "Flat upper sternal/clavicular region in front photo"
+  workoutAdjustment: string; // "+2 Sets Incline DB Press @ 30°"
+  nutritionAdjustment: string; // "Protein target maintained at 2.0g/kg"
+  recoveryAdjustment: string; // "+1 Rest day after Heavy Upper Session"
+  goalImpact: string; // "ETA for Chest Symmetry adjusted by -1 week"
+  coachFocus: string; // "Maintain 3-second eccentric pause on incline press"
+}
+
+export type TransformationMomentum = 'Excellent' | 'Good' | 'Stable' | 'Slow' | 'At Risk';
+
+export interface ScientificExecutiveSummary {
+  keyImprovements: string[];
+  noVisibleChangeAreas: string[];
+  areasRequiringAttention: string[];
+  highestPriority: string;
+  expectedResultNextMonth: string;
+  scientificLimitations: string[];
+  momentum: TransformationMomentum;
+  momentumReason: string;
+}
+
 export interface BodyAnalysisResult {
   month: string;
   analyzedAt: string;
   transformationStage?: number;
   bodyFat: BodyFatEstimation;
+  confidenceReasons?: string[];
+  observedFeatures?: string[];
+  estimatedFeatures?: string[];
+  notDeterminableFeatures?: string[];
+  adaptiveWorkoutAdjustments?: string[];
+  adaptiveNutritionAdjustments?: string[];
+  scientificMuscleAnalyses?: ScientificMuscleGroupAnalysis[];
+  decisionPipelineFlow?: DecisionPipelineFlow[];
+  executiveSummary?: ScientificExecutiveSummary;
   postureObservations: string[];
   visibleMuscleDevelopment: {
     chest: string;
@@ -72,7 +123,7 @@ export interface BodyAnalysisResult {
   disclaimer: string;
 }
 
-export type DeltaCategoryStatus = 'improved' | 'unchanged' | 'needs_attention';
+export type DeltaCategoryStatus = 'improved' | 'maintained' | 'slight_regression' | 'regression' | 'no_conclusion' | 'unchanged' | 'needs_attention';
 
 export interface CategoryComparisonItem {
   category: string; // e.g., "Chest Development", "Waist & Core", "Body Fat %", "Posture"

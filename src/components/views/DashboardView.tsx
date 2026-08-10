@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckIn, UserProfile } from '../../types';
 import { TodayMissionCard } from '../dashboard/TodayMissionCard';
 import { TodayStatusCard } from '../dashboard/TodayStatusCard';
 import { ProgressSummaryCard } from '../dashboard/ProgressSummaryCard';
 import { WaterCard } from '../dashboard/WaterCard';
 import { NutritionCard } from '../dashboard/NutritionCard';
-import { progressService } from '../../services';
+import { WorkoutJourneyCard } from '../dashboard/WorkoutJourneyCard';
+import { TomorrowWorkoutCard } from '../dashboard/TomorrowWorkoutCard';
+import { StreakMetricsCard } from '../dashboard/StreakMetricsCard';
+import { progressService, workoutService, nutritionService } from '../../services';
+import { stateSynchronizer } from '../../integration/stateSynchronizer';
 import { Card } from '../ui/Card';
 import { GraduationCap, Calendar, ShieldCheck } from 'lucide-react';
 
@@ -15,6 +19,7 @@ interface DashboardViewProps {
   onStartWorkout?: () => void;
   onRetakeCheckIn?: () => void;
   onNavigateToProgress?: () => void;
+  onNavigateToWorkout?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -23,13 +28,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onStartWorkout,
   onRetakeCheckIn,
   onNavigateToProgress,
+  onNavigateToWorkout,
 }) => {
-  const [waterAmount, setWaterAmount] = React.useState(2.5);
-  const progressSummary = progressService.getProgressSummary();
+  const [todayDate] = useState(() => progressService.getFormattedDate(0));
+  
+  // Real Service State
+  const [workoutStats, setWorkoutStats] = useState(() => workoutService.statistics());
+  const [nutritionData, setNutritionData] = useState(() => nutritionService.load(todayDate));
+  const [progressSummary, setProgressSummary] = useState(() => progressService.getProgressSummary());
+
+  const refreshDashboardData = () => {
+    setWorkoutStats(workoutService.statistics());
+    setNutritionData(nutritionService.load(todayDate));
+    setProgressSummary(progressService.getProgressSummary());
+  };
+
+  useEffect(() => {
+    refreshDashboardData();
+    // Subscribe to state synchronizer so any meal, workout, water or checkin update re-fetches
+    const unsubscribe = stateSynchronizer.subscribe(() => {
+      refreshDashboardData();
+    });
+    return () => unsubscribe();
+  }, [todayDate]);
 
   const handleAddWater = () => {
-    setWaterAmount((prev) => Math.min(5.0, +(prev + 0.25).toFixed(2)));
+    nutritionService.addWaterIntake(todayDate, 250);
+    stateSynchronizer.notifySubscribers();
   };
+
+  const consumedCals = nutritionData.mealLogs.reduce((sum, item) => sum + item.calories, 0);
+  const targetCals = nutritionData.goals.targetCalories || 2200;
+  const currentWaterLiters = +(nutritionData.waterLog.ml / 1000).toFixed(2);
+  const targetWaterLiters = +((nutritionData.goals.targetWaterMl || 3000) / 1000).toFixed(1);
 
   const city = profile?.city || 'Coimbatore';
   const gymTime = profile?.schedule?.gymTime || '18:00';
@@ -41,10 +72,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Primary Hero Section: Today's Mission */}
       <TodayMissionCard
-        workoutTitle="Chest + Triceps"
-        durationMinutes={45}
+        workoutTitle={workoutStats.workoutTitle || 'Chest + Triceps'}
+        durationMinutes={workoutStats.durationMinutes || 45}
+        completionPercentage={workoutStats.completionPercentage}
         onStartWorkout={onStartWorkout}
       />
+
+      {/* Tomorrow's Workout Preview Card */}
+      <TomorrowWorkoutCard onViewSplit={onNavigateToWorkout} />
+
+      {/* Workout Journey Calendar Card */}
+      <WorkoutJourneyCard onStartWorkout={onStartWorkout} />
+
+      {/* Streak & Consistency Metrics Engine Card */}
+      <StreakMetricsCard />
 
       {/* Progress Summary Card */}
       <ProgressSummaryCard
@@ -55,13 +96,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Grid: Water and Nutrition Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <WaterCard
-          currentLiters={waterAmount}
-          targetLiters={4.0}
+          currentLiters={currentWaterLiters}
+          targetLiters={targetWaterLiters}
           onAddWater={handleAddWater}
         />
         <NutritionCard
-          consumedCalories={1850}
-          targetCalories={2400}
+          consumedCalories={consumedCals}
+          targetCalories={targetCals}
         />
       </div>
 

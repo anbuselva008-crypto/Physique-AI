@@ -3,6 +3,8 @@ import { workoutService } from '../services/workoutService';
 import { getPersona } from '../persona';
 import { transformationIntelligenceEngine } from '../intelligence';
 import { systemController } from '../system/systemController';
+import { eventBus } from '../system/eventBus';
+import { stateSynchronizer } from './stateSynchronizer';
 import { WorkoutData } from '../types';
 
 export interface WorkoutScreenData {
@@ -58,7 +60,7 @@ export class WorkoutConnector {
       estimatedDurationMins: plan.estimatedDurationMins,
       coachNotes: plan.trainingNotes,
       weakMusclePriority: persona.body?.weakAreas || ['Upper Chest', 'Rear Delts'],
-      isCompletedToday: workoutService.statistics().completionPercentage === 100,
+      isCompletedToday: workoutService.getCompletedWorkouts().some((w) => w.date === new Date().toISOString().split('T')[0]),
     };
   }
 
@@ -77,11 +79,20 @@ export class WorkoutConnector {
       workoutService.saveCompletedWorkout(workoutData);
     }
 
+    eventBus.emit('WORKOUT_COMPLETED', {
+      sessionType,
+      durationMins,
+      setsCompleted,
+      timestamp: new Date().toISOString(),
+    });
+
     await systemController.runWorkoutPipeline({
       sessionType,
       durationMins,
       setsCompleted,
     });
+
+    stateSynchronizer.notifySubscribers();
   }
 }
 

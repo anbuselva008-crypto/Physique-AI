@@ -186,11 +186,25 @@ export class AIContextBuilder {
     try {
       const todayWorkout = workoutService.load();
       const stats = workoutService.statistics();
+      const completedHistory = workoutService.getCompletedWorkouts();
+      const tomorrowWorkout = workoutService.getTomorrowWorkout();
+
+      const yesterdayDate = new Date();
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+      const yesterdayRecord = workoutService.getWorkoutForDate(yesterdayStr);
 
       return {
         todayWorkout,
         statistics: stats,
-        isWorkoutCompleted: stats.completionPercentage === 100,
+        isWorkoutCompleted: completedHistory.some((w) => w.date === new Date().toISOString().split('T')[0]),
+        yesterdayRecord: yesterdayRecord ? {
+          title: yesterdayRecord.title,
+          durationMinutes: yesterdayRecord.durationMinutes,
+          completed: true,
+        } : null,
+        tomorrowWorkout,
+        totalCompletedWorkouts: completedHistory.length,
       };
     } catch (error) {
       console.error('AIContextBuilder: Error constructing workout context', error);

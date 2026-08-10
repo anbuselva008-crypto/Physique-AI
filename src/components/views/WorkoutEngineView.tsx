@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { WorkoutStage, WorkoutData } from '../../types';
 import { workoutService } from '../../services';
+import { workoutConnector } from '../../integration/workoutConnector';
 import { WorkoutListView } from '../workout/WorkoutListView';
 import { WorkoutSessionView } from '../workout/WorkoutSessionView';
 import { WorkoutCompleteView } from '../workout/WorkoutCompleteView';
@@ -36,8 +37,8 @@ export const WorkoutEngineView: React.FC<WorkoutEngineViewProps> = ({
     );
   };
 
-  const handleFinishWorkout = () => {
-    workoutService.saveCompletedWorkout(workout);
+  const handleFinishWorkout = async () => {
+    await workoutConnector.logCompletedWorkout(workout);
     setStage('complete');
   };
 
