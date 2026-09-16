@@ -65,17 +65,6 @@ export class GroqClient {
       };
     }
 
-    if (!this.apiKey) {
-      return {
-        success: false,
-        content: '',
-        model,
-        latencyMs: Date.now() - startTime,
-        error:
-          'GROQ_API_KEY environment variable is missing. Please configure GROQ_API_KEY to enable Groq inference.',
-      };
-    }
-
     const messages = [
       {
         role: 'system',
@@ -108,16 +97,6 @@ export class GroqClient {
     const startTime = Date.now();
     const model = options?.model || this.defaultModel;
 
-    if (!this.apiKey) {
-      return {
-        success: false,
-        content: '',
-        model,
-        latencyMs: Date.now() - startTime,
-        error: 'GROQ_API_KEY environment variable is missing.',
-      };
-    }
-
     const body = {
       model,
       messages: [
@@ -141,11 +120,10 @@ export class GroqClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
 
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch('/api/ai/groq', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(body),
           signal: controller.signal,
@@ -153,44 +131,8 @@ export class GroqClient {
 
         clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          const status = response.status;
-          lastError = (errData as Record<string, unknown>)?.error
-            ? String((errData as Record<string, { message?: string }>).error?.message || response.statusText)
-            : `Groq API HTTP ${status}: ${response.statusText}`;
-
-          // If rate limit (429) or server error (5xx), retry with exponential backoff
-          if ((status === 429 || status >= 500) && attempt < this.maxRetries) {
-            const delay = this.retryDelayMs * Math.pow(2, attempt - 1);
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            continue;
-          }
-
-          return {
-            success: false,
-            content: '',
-            model,
-            latencyMs: Date.now() - startTime,
-            error: lastError,
-            raw: errData,
-          };
-        }
-
         const data = await response.json();
-        const content = data.choices?.[0]?.message?.content || '';
-        const usage = data.usage || {};
-
-        return {
-          success: true,
-          content,
-          model: data.model || model,
-          latencyMs: Date.now() - startTime,
-          promptTokens: usage.prompt_tokens,
-          completionTokens: usage.completion_tokens,
-          totalTokens: usage.total_tokens,
-          raw: data,
-        };
+        return data as GroqResponse;
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') {
           lastError = `Request timed out after ${this.timeoutMs}ms`;
